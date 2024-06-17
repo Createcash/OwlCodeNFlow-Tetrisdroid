@@ -1,198 +1,332 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Tetris Game</title>
-    <script src="https://cdn.jsdelivr.net/npm/phaser@3.55.2/dist/phaser.js"></script>
     <style>
         body {
-            margin: 0;
-            padding: 0;
-        }
-        #game-container {
             display: flex;
             justify-content: center;
             align-items: center;
             height: 100vh;
             background-color: #000;
+            margin: 0;
+            overflow: hidden;
         }
         canvas {
+            background-color: #111;
+        }
+        .controls {
+            position: absolute;
+            bottom: 20px;
+            display: flex;
+            gap: 10px;
+        }
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
             background-color: #333;
+            color: white;
+            border: none;
+            cursor: pointer;
         }
     </style>
 </head>
 <body>
-    <div id="game-container"></div>
+    <canvas id="gameCanvas" width="240" height="400"></canvas>
+    <div class="controls">
+        <button id="leftBtn">Left</button>
+        <button id="rightBtn">Right</button>
+        <button id="downBtn">Down</button>
+        <button id="rotateBtn">Rotate</button>
+    </div>
     <script>
-        const config = {
-            type: Phaser.AUTO,
-            width: 200,
-            height: 400,
-            parent: 'game-container',
-            backgroundColor: '#000',
-            physics: {
-                default: 'arcade',
-                arcade: {
-                    gravity: { y: 0 },
-                    debug: false
-                }
-            },
-            scene: {
-                preload: preload,
-                create: create,
-                update: update
-            }
-        };
-
-        const game = new Phaser.Game(config);
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
         const ROWS = 20;
         const COLS = 10;
-        const SQUARE_SIZE = 20;
-        let board;
-        let piece;
-        let cursors;
+        const SQ = 20;
+        const VACANT = 'BLACK';
 
-        const colors = {
-            I: 0x00ffff,
-            O: 0xffff00,
-            T: 0x800080,
-            S: 0x00ff00,
-            Z: 0xff0000,
-            J: 0x0000ff,
-            L: 0xffa500
-        };
+        const PIECES = [
+            [Z, 'red'],
+            [S, 'green'],
+            [T, 'purple'],
+            [O, 'blue'],
+            [L, 'cyan'],
+            [I, 'orange']
+        ];
 
-        const shapes = {
-            I: [[1, 1, 1, 1]],
-            O: [[1, 1], [1, 1]],
-            T: [[0, 1, 0], [1, 1, 1]],
-            S: [[0, 1, 1], [1, 1, 0]],
-            Z: [[1, 1, 0], [0, 1, 1]],
-            J: [[1, 0, 0], [1, 1, 1]],
-            L: [[0, 0, 1], [1, 1, 1]]
-        };
+        document.addEventListener('keydown', CONTROL);
+        document.getElementById('leftBtn').addEventListener('click', () => CONTROL({ keyCode: 37 }));
+        document.getElementById('rightBtn').addEventListener('click', () => CONTROL({ keyCode: 39 }));
+        document.getElementById('downBtn').addEventListener('click', () => CONTROL({ keyCode: 40 }));
+        document.getElementById('rotateBtn').addEventListener('click', () => CONTROL({ keyCode: 38 }));
 
-        function preload() {
+        let board = [];
+        for (let r = 0; r < ROWS; r++) {
+            board[r] = [];
+            for (let c = 0; c < COLS; c++) {
+                board[r][c] = VACANT;
+            }
         }
 
-        function create() {
-            board = Array.from({ length: ROWS }, () => Array(COLS).fill(0));
-            cursors = this.input.keyboard.createCursorKeys();
-
-            piece = createPiece();
-            this.time.addEvent({
-                delay: 500,
-                callback: () => {
-                    if (!movePiece(0, 1)) {
-                        lockPiece();
-                        piece = createPiece();
-                    }
-                },
-                loop: true
-            });
+        function drawSquare(x, y, color) {
+            ctx.fillStyle = color;
+            ctx.fillRect(x * SQ, y * SQ, SQ, SQ);
+            ctx.strokeStyle = 'WHITE';
+            ctx.strokeRect(x * SQ, y * SQ, SQ, SQ);
         }
 
-        function update() {
-            if (Phaser.Input.Keyboard.JustDown(cursors.left)) {
-                movePiece(-1, 0);
-            } else if (Phaser.Input.Keyboard.JustDown(cursors.right)) {
-                movePiece(1, 0);
-            } else if (Phaser.Input.Keyboard.JustDown(cursors.down)) {
-                if (!movePiece(0, 1)) {
-                    lockPiece();
-                    piece = createPiece();
+        function drawBoard() {
+            for (let r = 0; r < ROWS; r++) {
+                for (let c = 0; c < COLS; c++) {
+                    drawSquare(c, r, board[r][c]);
                 }
-            } else if (Phaser.Input.Keyboard.JustDown(cursors.up)) {
-                rotatePiece();
-            }
-
-            drawBoard(this);
-            drawPiece(this);
-        }
-
-        function createPiece() {
-            const types = Object.keys(shapes);
-            const type = types[Phaser.Math.Between(0, types.length - 1)];
-            const shape = shapes[type];
-            const color = colors[type];
-            return { type, shape, color, x: 3, y: -2 };
-        }
-
-        function movePiece(offsetX, offsetY) {
-            if (!checkCollision(piece.shape, piece.x + offsetX, piece.y + offsetY)) {
-                piece.x += offsetX;
-                piece.y += offsetY;
-                return true;
-            }
-            return false;
-        }
-
-        function rotatePiece() {
-            const newShape = piece.shape[0].map((_, i) => piece.shape.map(row => row[i])).reverse();
-            if (!checkCollision(newShape, piece.x, piece.y)) {
-                piece.shape = newShape;
             }
         }
 
-        function checkCollision(shape, offsetX, offsetY) {
-            for (let y = 0; y < shape.length; y++) {
-                for (let x = 0; x < shape[y].length; x++) {
-                    if (shape[y][x]) {
-                        const newX = piece.x + x + offsetX;
-                        const newY = piece.y + y + offsetY;
-                        if (newX < 0 || newX >= COLS || newY >= ROWS || (newY >= 0 && board[newY][newX])) {
-                            return true;
+        drawBoard();
+
+        class Piece {
+            constructor(tetromino, color) {
+                this.tetromino = tetromino;
+                this.color = color;
+                this.tetrominoN = 0;
+                this.activeTetromino = this.tetromino[this.tetrominoN];
+                this.x = 3;
+                this.y = -2;
+            }
+
+            fill(color) {
+                for (let r = 0; r < this.activeTetromino.length; r++) {
+                    for (let c = 0; c < this.activeTetromino.length; c++) {
+                        if (this.activeTetromino[r][c]) {
+                            drawSquare(this.x + c, this.y + r, color);
                         }
                     }
                 }
             }
-            return false;
-        }
 
-        function lockPiece() {
-            for (let y = 0; y < piece.shape.length; y++) {
-                for (let x = 0; x < piece.shape[y].length; x++) {
-                    if (piece.shape[y][x] && piece.y + y >= 0) {
-                        board[piece.y + y][piece.x + x] = piece.color;
-                    }
+            draw() {
+                this.fill(this.color);
+            }
+
+            undraw() {
+                this.fill(VACANT);
+            }
+
+            moveDown() {
+                if (!this.collision(0, 1, this.activeTetromino)) {
+                    this.undraw();
+                    this.y++;
+                    this.draw();
+                } else {
+                    this.lock();
+                    p = randomPiece();
                 }
             }
-            clearLines();
-        }
 
-        function clearLines() {
-            for (let y = ROWS - 1; y >= 0; y--) {
-                if (board[y].every(cell => cell)) {
-                    for (let newY = y; newY > 0; newY--) {
-                        board[newY] = board[newY - 1].slice();
-                    }
-                    board[0].fill(0);
-                    y++;
+            moveRight() {
+                if (!this.collision(1, 0, this.activeTetromino)) {
+                    this.undraw();
+                    this.x++;
+                    this.draw();
                 }
+            }
+
+            moveLeft() {
+                if (!this.collision(-1, 0, this.activeTetromino)) {
+                    this.undraw();
+                    this.x--;
+                    this.draw();
+                }
+            }
+
+            rotate() {
+                let nextPattern = this.tetromino[(this.tetrominoN + 1) % this.tetromino.length];
+                if (!this.collision(0, 0, nextPattern)) {
+                    this.undraw();
+                    this.tetrominoN = (this.tetrominoN + 1) % this.tetromino.length;
+                    this.activeTetromino = nextPattern;
+                    this.draw();
+                }
+            }
+
+            lock() {
+                for (let r = 0; r < this.activeTetromino.length; r++) {
+                    for (let c = 0; c < this.activeTetromino.length; c++) {
+                        if (!this.activeTetromino[r][c]) {
+                            continue;
+                        }
+                        if (this.y + r < 0) {
+                            alert('Game Over');
+                            gameOver = true;
+                            break;
+                        }
+                        board[this.y + r][this.x + c] = this.color;
+                    }
+                }
+                for (let r = 0; r < ROWS; r++) {
+                    let isRowFull = true;
+                    for (let c = 0; c < COLS; c++) {
+                        isRowFull = isRowFull && (board[r][c] !== VACANT);
+                    }
+                    if (isRowFull) {
+                        for (let y = r; y > 1; y--) {
+                            for (let c = 0; c < COLS; c++) {
+                                board[y][c] = board[y - 1][c];
+                            }
+                        }
+                        for (let c = 0; c < COLS; c++) {
+                            board[0][c] = VACANT;
+                        }
+                    }
+                }
+                drawBoard();
+            }
+
+            collision(x, y, piece) {
+                for (let r = 0; r < piece.length; r++) {
+                    for (let c = 0; c < piece.length; c++) {
+                        if (!piece[r][c]) {
+                            continue;
+                        }
+                        let newX = this.x + c + x;
+                        let newY = this.y + r + y;
+                        if (newX < 0 || newX >= COLS || newY >= ROWS) {
+                            return true;
+                        }
+                        if (newY < 0) {
+                            continue;
+                        }
+                        if (board[newY][newX] !== VACANT) {
+                            return true;
+                        }
+                    }
+                }
+                return false;
             }
         }
 
-        function drawBoard(scene) {
-            scene.add.graphics().clear();
-            for (let y = 0; y < ROWS; y++) {
-                for (let x = 0; x < COLS; x++) {
-                    if (board[y][x]) {
-                        scene.add.graphics().fillStyle(board[y][x], 1).fillRect(x * SQUARE_SIZE, y * SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE);
-                    }
-                }
+        const PIECES = [
+            [Z, 'red'],
+            [S, 'green'],
+            [T, 'purple'],
+            [O, 'blue'],
+            [L, 'cyan'],
+            [I, 'orange']
+        ];
+
+        const Z = [
+            [
+                [1, 1, 0],
+                [0, 1, 1],
+                [0, 0, 0]
+            ],
+            [
+                [0, 0, 1],
+                [0, 1, 1],
+                [0, 1, 0]
+            ]
+        ];
+
+        const S = [
+            [
+                [0, 1, 1],
+                [1, 1, 0],
+                [0, 0, 0]
+            ],
+            [
+                [0, 1, 0],
+                [0, 1, 1],
+                [0, 0, 1]
+            ]
+        ];
+
+        const T = [
+            [
+                [0, 1, 0],
+                [1, 1, 1],
+                [0, 0, 0]
+            ],
+            [
+                [0, 1, 0],
+                [0, 1, 1],
+                [0, 1, 0]
+            ]
+        ];
+
+        const O = [
+            [
+                [1, 1],
+                [1, 1]
+            ]
+        ];
+
+        const L = [
+            [
+                [1, 0, 0],
+                [1, 1, 1],
+                [0, 0, 0]
+            ],
+            [
+                [0, 1, 1],
+                [0, 1, 0],
+                [0, 1, 0]
+            ]
+        ];
+
+        const I = [
+            [
+                [0, 0, 0, 0],
+                [1, 1, 1, 1],
+                [0, 0, 0, 0],
+                [0, 0, 0, 0]
+            ],
+            [
+                [0, 1, 0, 0],
+                [0, 1, 0, 0],
+                [0, 1, 0, 0],
+                [0, 1, 0, 0]
+            ]
+        ];
+
+        function randomPiece() {
+            let r = Math.floor(Math.random() * PIECES.length);
+            return new Piece(PIECES[r][0], PIECES[r][1]);
+        }
+
+        let p = randomPiece();
+
+        function CONTROL(event) {
+            if (event.keyCode === 37) {
+                p.moveLeft();
+            } else if (event.keyCode === 38) {
+                p.rotate();
+            } else if (event.keyCode === 39) {
+                p.moveRight();
+            } else if (event.keyCode === 40) {
+                p.moveDown();
             }
         }
 
-        function drawPiece(scene) {
-            const graphics = scene.add.graphics().clear();
-            for (let y = 0; y < piece.shape.length; y++) {
-                for (let x = 0; x < piece.shape[y].length; x++) {
-                    if (piece.shape[y][x]) {
-                        graphics.fillStyle(piece.color, 1).fillRect((piece.x + x) * SQUARE_SIZE, (piece.y + y) * SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE);
-                    }
-                }
+        let dropStart = Date.now();
+        let gameOver = false;
+        function drop() {
+            let now = Date.now();
+            let delta = now - dropStart;
+            if (delta > 1000) {
+                p.moveDown();
+                dropStart = Date.now();
+            }
+            if (!gameOver) {
+                requestAnimationFrame(drop);
             }
         }
+
+        drop();
     </script>
 </body>
 </html>
