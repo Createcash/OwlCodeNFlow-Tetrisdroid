@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Tetris Game</title>
+    <script src="https://cdn.jsdelivr.net/npm/phaser@3.55.2/dist/phaser.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+        }
+        #game-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #000;
+        }
+        canvas {
+            background-color: #333;
+        }
+    </style>
+</head>
+<body>
+    <div id="game-container"></div>
+    <script>
+        const config = {
+            type: Phaser.AUTO,
+            width: 200,
+            height: 400,
+            parent: 'game-container',
+            backgroundColor: '#000',
+            physics: {
+                default: 'arcade',
+                arcade: {
+                    gravity: { y: 0 },
+                    debug: false
+                }
+            },
+            scene: {
+                preload: preload,
+                create: create,
+                update: update
+            }
+        };
+
+        const game = new Phaser.Game(config);
+        const ROWS = 20;
+        const COLS = 10;
+        const SQUARE_SIZE = 20;
+        let board;
+        let piece;
+        let cursors;
+
+        const colors = {
+            I: 0x00ffff,
+            O: 0xffff00,
+            T: 0x800080,
+            S: 0x00ff00,
+            Z: 0xff0000,
+            J: 0x0000ff,
+            L: 0xffa500
+        };
+
+        const shapes = {
+            I: [[1, 1, 1, 1]],
+            O: [[1, 1], [1, 1]],
+            T: [[0, 1, 0], [1, 1, 1]],
+            S: [[0, 1, 1], [1, 1, 0]],
+            Z: [[1, 1, 0], [0, 1, 1]],
+            J: [[1, 0, 0], [1, 1, 1]],
+            L: [[0, 0, 1], [1, 1, 1]]
+        };
+
+        function preload() {
+        }
+
+        function create() {
+            board = Array.from({ length: ROWS }, () => Array(COLS).fill(0));
+            cursors = this.input.keyboard.createCursorKeys();
+
+            piece = createPiece();
+            this.time.addEvent({
+                delay: 500,
+                callback: () => {
+                    if (!movePiece(0, 1)) {
+                        lockPiece();
+                        piece = createPiece();
+                    }
+                },
+                loop: true
+            });
+        }
+
+        function update() {
+            if (Phaser.Input.Keyboard.JustDown(cursors.left)) {
+                movePiece(-1, 0);
+            } else if (Phaser.Input.Keyboard.JustDown(cursors.right)) {
+                movePiece(1, 0);
+            } else if (Phaser.Input.Keyboard.JustDown(cursors.down)) {
+                if (!movePiece(0, 1)) {
+                    lockPiece();
+                    piece = createPiece();
+                }
+            } else if (Phaser.Input.Keyboard.JustDown(cursors.up)) {
+                rotatePiece();
+            }
+
+            drawBoard(this);
+            drawPiece(this);
+        }
+
+        function createPiece() {
+            const types = Object.keys(shapes);
+            const type = types[Phaser.Math.Between(0, types.length - 1)];
+            const shape = shapes[type];
+            const color = colors[type];
+            return { type, shape, color, x: 3, y: -2 };
+        }
+
+        function movePiece(offsetX, offsetY) {
+            if (!checkCollision(piece.shape, piece.x + offsetX, piece.y + offsetY)) {
+                piece.x += offsetX;
+                piece.y += offsetY;
+                return true;
+            }
+            return false;
+        }
+
+        function rotatePiece() {
+            const newShape = piece.shape[0].map((_, i) => piece.shape.map(row => row[i])).reverse();
+            if (!checkCollision(newShape, piece.x, piece.y)) {
+                piece.shape = newShape;
+            }
+        }
+
+        function checkCollision(shape, offsetX, offsetY) {
+            for (let y = 0; y < shape.length; y++) {
+                for (let x = 0; x < shape[y].length; x++) {
+                    if (shape[y][x]) {
+                        const newX = piece.x + x + offsetX;
+                        const newY = piece.y + y + offsetY;
+                        if (newX < 0 || newX >= COLS || newY >= ROWS || (newY >= 0 && board[newY][newX])) {
+                            return true;
+                        }
+                    }
+                }
+            }
+            return false;
+        }
+
+        function lockPiece() {
+            for (let y = 0; y < piece.shape.length; y++) {
+                for (let x = 0; x < piece.shape[y].length; x++) {
+                    if (piece.shape[y][x] && piece.y + y >= 0) {
+                        board[piece.y + y][piece.x + x] = piece.color;
+                    }
+                }
+            }
+            clearLines();
+        }
+
+        function clearLines() {
+            for (let y = ROWS - 1; y >= 0; y--) {
+                if (board[y].every(cell => cell)) {
+                    for (let newY = y; newY > 0; newY--) {
+                        board[newY] = board[newY - 1].slice();
+                    }
+                    board[0].fill(0);
+                    y++;
+                }
+            }
+        }
+
+        function drawBoard(scene) {
+            scene.add.graphics().clear();
+            for (let y = 0; y < ROWS; y++) {
+                for (let x = 0; x < COLS; x++) {
+                    if (board[y][x]) {
+                        scene.add.graphics().fillStyle(board[y][x], 1).fillRect(x * SQUARE_SIZE, y * SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE);
+                    }
+                }
+            }
+        }
+
+        function drawPiece(scene) {
+            const graphics = scene.add.graphics().clear();
+            for (let y = 0; y < piece.shape.length; y++) {
+                for (let x = 0; x < piece.shape[y].length; x++) {
+                    if (piece.shape[y][x]) {
+                        graphics.fillStyle(piece.color, 1).fillRect((piece.x + x) * SQUARE_SIZE, (piece.y + y) * SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE);
+                    }
+                }
+            }
+        }
+    </script>
+</body>
+</html>
