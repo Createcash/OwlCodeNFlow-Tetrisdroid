@@ -22,6 +22,8 @@ Link for this version
 
 https://createcash.github.io/OwlCodeNFlow-Tetrisdroid/
 
+It can be play on android, desktop and Iphone as well
+
 
 
 Copyright @OwlCodeNFlow
